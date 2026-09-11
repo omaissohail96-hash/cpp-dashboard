@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.log
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Uploaded workbooks and persisted runtime data
+backend/uploads/
+backend/data/
+data/
+uploads/
+*.xls
+*.xlsx
+*.xlsb
+
+# Next.js / Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/tsconfig.tsbuildinfo
+frontend/next*.log
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
