@@ -95,6 +95,7 @@ def parse_rejection(path: Path):
     end = len(raw)
     frame = raw.iloc[header + 1:end].copy(); frame.columns = columns; frame = frame.dropna(how="all")
     reason_key = next((c for c in columns if c.strip().lower() in {"reason", "reason:"} or "reason" in c.lower()), None)
+    dept_key = next((c for c in columns if c.strip().lower() in {"responsible dept", "responsible department"} or "responsible dept" in c.lower()), None)
     month_key = next((c for c in columns if c.strip().lower() == "month"), None)
     if not month_key: raise ValueError("The Rejection (Software) sheet has no Month column.")
     weight_key = next((c for c in columns if c.strip().lower() in {"net wt", "net weight"}), None) or next((c for c in columns if "gross wt" in c.lower() or "gross weight" in c.lower()), None)
@@ -106,7 +107,7 @@ def parse_rejection(path: Path):
         if not isinstance(weight, (int, float)) or not math.isfinite(float(weight)): continue
         if not reason or str(reason).strip().lower() in {"total", "subtotal", "grand total"}: continue
         month_value = json_value(row.get(month_key), "Month") if month_key else None
-        records.append({"Reason": reason, "Net Wt": float(weight), "Month": month_value})
+        records.append({"Reason": reason, "Responsible Dept": json_value(row.get(dept_key), dept_key) if dept_key else None, "Net Wt": float(weight), "Month": month_value})
     month_index = columns.index(month_key) + 1 if month_key in columns else None
     logger.info("Rejection detail parse: sheet='Rejection (Software)', header_row=%s, month_column='%s' (Excel column %s), end_row=%s, weight_field='%s', full_year_detail_rows=%s, raw_net_weight_sum=%.3f", header, month_key, month_index, end, weight_key, len(records), sum(row["Net Wt"] for row in records))
     return records, weight_key
@@ -177,13 +178,16 @@ def line_waste_detail():
         return sorted(out.values(),key=lambda x:x["waste"],reverse=True)
     reasons=groups("Nature of DT"); categories=groups("Category"); films=groups("Film"); total_waste=sum(x["waste"] for x in reasons); total_hours=sum(x["hours"] for x in reasons); total_instances=sum(x["instances"] for x in reasons)
     nested={}; category_key=find_category_key(rows)
+    downtime_by_category={}
     for row in rows:
         film=str(row.get("Film") or "Unspecified"); category=str(row.get(category_key) or "Unspecified")
-        nested.setdefault(film,{}).setdefault(category,0)
-        nested[film][category]+=float(row.get("Waste (Kg)") or 0)
-    film_categories=[{"film":film,"total":sum(values.values()),"categories":[{"name":name,"waste":waste} for name,waste in sorted(values.items(),key=lambda item:item[1],reverse=True) if waste != 0]} for film,values in sorted(nested.items(),key=lambda item:sum(item[1].values()),reverse=True) if sum(values.values()) != 0]
+        item=nested.setdefault(film,{}).setdefault(category,{"waste":0,"hours":0})
+        item["waste"]+=float(row.get("Waste (Kg)") or 0); item["hours"]+=float(row.get("Downtime (Hours)") or 0)
+        downtime_by_category[category]=downtime_by_category.get(category,0)+float(row.get("Downtime (Hours)") or 0)
+    film_categories=[{"film":film,"total":sum(v["waste"] for v in values.values()),"categories":[{"name":name,"waste":v["waste"],"hours":v["hours"]} for name,v in sorted(values.items(),key=lambda item:item[1]["waste"],reverse=True) if v["waste"] != 0 or v["hours"] != 0]} for film,values in sorted(nested.items(),key=lambda item:sum(v["waste"] for v in item[1].values()),reverse=True) if sum(v["waste"] for v in values.values()) != 0]
+    downtime_categories=[{"name":name,"hours":hours} for name,hours in sorted(downtime_by_category.items(),key=lambda item:item[1],reverse=True)]
     for item in reasons: item["share"]=item["waste"]/total_waste*100 if total_waste else 0
-    return {"month":month,"summary":{"waste":total_waste,"hours":total_hours,"instances":total_instances,"events":len(rows)},"reasons":reasons,"categories":categories,"films":films,"film_categories":film_categories}
+    return {"month":month,"summary":{"waste":total_waste,"hours":total_hours,"instances":total_instances,"events":len(rows)},"reasons":reasons,"categories":categories,"films":films,"film_categories":film_categories,"downtime_categories":downtime_categories}
 
 @app.get("/api/kpis/metallized-stock/{kind}")
 def metallized_stock_detail(kind: str):
@@ -232,8 +236,18 @@ def rejection_reason_summary():
         reason = canonical_reason(row.get("Reason"))
         grouped[reason] = grouped.get(reason, 0) + row.get("Net Wt", 0)
         raw_month = row.get("Month")
-        details.setdefault(reason, []).append({"row": index, "raw_reason": row.get("Reason"), "net": row.get("Net Wt", 0), "month": raw_month, "month_period": month_period(raw_month)})
+        details.setdefault(reason, []).append({"row": index, "raw_reason": row.get("Reason"), "net": row.get("Net Wt", 0), "month": raw_month, "month_period": month_period(raw_month), "responsible_dept": row.get("Responsible Dept") or "Other"})
     reasons = [{"reason": reason, "net": weight, "count": len(details.get(reason, [])), "detail": details.get(reason, [])} for reason, weight in sorted(grouped.items(), key=lambda item: item[1], reverse=True)]
+    departments: dict[str, float] = {}
+    for row in rejection_rows:
+        name = re.sub(r"\s+", " ", str(row.get("Responsible Dept") or "Other").strip()) or "Other"
+        departments[name] = departments.get(name, 0) + float(row.get("Net Wt") or 0)
+    department_rows = [{"department": name, "net": weight} for name, weight in sorted(departments.items(), key=lambda item: item[1], reverse=True)]
+    combined_map: dict[str, dict[str, float]] = {}
+    for row in rejection_rows:
+        reason = canonical_reason(row.get("Reason")); dept = re.sub(r"\s+", " ", str(row.get("Responsible Dept") or "Other").strip()) or "Other"
+        combined_map.setdefault(reason, {})[dept] = combined_map.setdefault(reason, {}).get(dept, 0) + float(row.get("Net Wt") or 0)
+    combined = [{"reason": reason, "departments": values, "net": sum(values.values())} for reason, values in sorted(combined_map.items(), key=lambda item: sum(item[1].values()), reverse=True)]
     total = {"net": sum(item["net"] for item in reasons)}
     logger.info("Rejection reason aggregation: reporting_month=%s, detail_rows=%s, net_weight_sum=%.3f, duplicate_processing=false", reporting_month, len(rejection_rows), total["net"])
-    return {"reporting_month": reporting_month, "weight_field": cache.get("rejection_weight_field") or "Unavailable", "detail_rows": len(rejection_rows), "reasons": reasons, "total": total}
+    return {"reporting_month": reporting_month, "weight_field": cache.get("rejection_weight_field") or "Unavailable", "detail_rows": len(rejection_rows), "reasons": reasons, "departments": department_rows, "combined": combined, "total": total}

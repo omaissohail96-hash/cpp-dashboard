@@ -2,6 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Pareto charts are presented in the Film-wise Waste report, not the KPI modal. */
+.max-w-4xl > div > section { display: none; }
+
+/* Keep the Film-wise Waste report in a deliberate vertical reading order. */
+.waste-shell > .mx-auto.max-w-7xl > .mt-7.grid.gap-6 { display: none; }
+.waste-shell > .mx-auto.max-w-7xl > .rejection-report-paretos { order: 8; }
+.waste-shell > .mx-auto.max-w-7xl > .mt-7.grid.gap-6 > section:last-child { order: 9; }
+
+/* Balanced chart cards: readable labels without full-bleed stretching. */
+.rejection-report-paretos { display: flex; flex-direction: column; gap: 1.5rem; }
+.film-wise-report > section { width: min(100%, 800px); max-width: 800px; margin: 0 auto; box-sizing: border-box; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 3px rgb(0 0 0 / 0.1); padding: 20px; }
+.film-wise-report > section > div { height: auto !important; }
+.film-wise-report > section.film-wise-chart > div { height: auto !important; }
+.film-wise-report > section.film-wise-chart > div.h-80 { height: 300px !important; }
+.film-wise-report > section > div.h-56,
+.film-wise-report > section > div.h-72 { height: 300px !important; }
+.film-wise-report > section:last-child { height: auto; padding-top: 0; }
+.film-wise-report > section:last-child { display: none; }
+.film-wise-report > section h3 { color: #111827; font-size: 16px; font-weight: 600; }
+.film-wise-report .recharts-cartesian-axis-tick-value { fill: #6b7280 !important; font-size: 11px; }
+.film-wise-report .recharts-xAxis .recharts-cartesian-axis-tick-value { fill: #4b5563 !important; font-size: 11px; }
+.film-wise-report .recharts-yAxis .recharts-cartesian-axis-tick-value { fill: #6b7280 !important; font-size: 11px; }
+.film-wise-report .recharts-line-curve { stroke-width: 3; }
+.film-wise-report .recharts-line-dot { stroke: #ffffff; stroke-width: 2; }
+.waste-shell > .mx-auto.max-w-7xl > .mt-7.grid.gap-6 > section:first-child { order: 7; width: min(100%, 72rem); margin-inline: auto; min-height: 22rem; }
+.waste-shell > .mx-auto.max-w-7xl > .mt-7.grid.gap-6 > section:first-child > div.h-80 { height: 20rem; }
+
+/* High-contrast typography for all Pareto charts on white cards. */
+.film-wise-report h3,
+.film-wise-report .section-kicker { color: #1f2937; }
+.film-wise-report .recharts-text,
+.film-wise-report .recharts-cartesian-axis-tick-value,
+.film-wise-report .recharts-label { fill: #374151 !important; color: #374151 !important; }
+.film-wise-report .recharts-tooltip-wrapper { color: #1f2937; }
+.film-wise-report .recharts-default-tooltip { border: 1px solid #cbd5e1 !important; background: #ffffff !important; color: #1f2937 !important; box-shadow: 0 8px 20px rgb(15 23 42 / 0.12); }
+.film-wise-report .recharts-tooltip-item,
+.film-wise-report .recharts-tooltip-label { color: #1f2937 !important; }
+.report-table-accordion { width: min(100%, 800px); max-width: 800px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 3px rgb(0 0 0 / 0.1); }
+
 @layer base {
   :root { color-scheme: light; }
   body { @apply bg-slate-50 text-slate-800 antialiased; }
