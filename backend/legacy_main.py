@@ -207,8 +207,14 @@ def line_waste_detail():
         item=nested.setdefault(film,{}).setdefault(category,{"waste":0,"hours":0})
         item["waste"]+=float(row.get("Waste (Kg)") or 0); item["hours"]+=float(row.get("Downtime (Hours)") or 0)
         downtime_by_category[category]=downtime_by_category.get(category,0)+float(row.get("Downtime (Hours)") or 0)
-    film_categories=[{"film":film,"total":sum(v["waste"] for v in values.values()),"categories":[{"name":name,"waste":v["waste"],"hours":v["hours"]} for name,v in sorted(values.items(),key=lambda item:item[1]["waste"],reverse=True) if v["waste"] != 0 or v["hours"] != 0]} for film,values in sorted(nested.items(),key=lambda item:sum(v["waste"] for v in item[1].values()),reverse=True) if sum(v["waste"] for v in values.values()) != 0]
-    downtime_categories=[{"name":name,"hours":hours} for name,hours in sorted(downtime_by_category.items(),key=lambda item:item[1],reverse=True)]
+    film_categories=[{"film":film,"total":sum(v["waste"] for v in values.values()),"categories":[{"name":name,"waste":v["waste"],"hours":round(v["hours"] + 1e-9, 1)} for name,v in sorted(values.items(),key=lambda item:item[1]["waste"],reverse=True) if v["waste"] != 0 or v["hours"] != 0]} for film,values in sorted(nested.items(),key=lambda item:sum(v["waste"] for v in item[1].values()),reverse=True) if sum(v["waste"] for v in values.values()) != 0]
+    # Derive the Pareto from the exact Film → Category structure returned to the modal.
+    # This guarantees both views use identical films, categories, and filtering.
+    downtime_from_modal={}
+    for film in film_categories:
+        for category in film["categories"]:
+            downtime_from_modal[category["name"]] = downtime_from_modal.get(category["name"], 0) + float(category.get("hours") or 0)
+    downtime_categories=[{"name":name,"hours":round(hours, 1)} for name,hours in sorted(downtime_from_modal.items(),key=lambda item:item[1],reverse=True)]
     logger.info("Line Waste downtime aggregation: month=%s, filtered_rows=%s, Technical Planned=%.3f, Technical Unplanned=%.3f, total_hours=%.3f", month, len(rows), downtime_by_category.get("Technical Planned", 0), downtime_by_category.get("Technical Unplanned", 0), sum(downtime_by_category.values()))
     for item in reasons: item["share"]=item["waste"]/total_waste*100 if total_waste else 0
     return {"month":month,"summary":{"waste":total_waste,"hours":total_hours,"instances":total_instances,"events":len(rows)},"reasons":reasons,"categories":categories,"films":films,"film_categories":film_categories,"downtime_categories":downtime_categories}

@@ -248,10 +248,17 @@ function formatWeightTooltip(valueKg: number, displayUnit: "kg" | "tons") {
   const formatted = shown.toLocaleString(undefined, { minimumFractionDigits: displayUnit === "tons" ? 3 : 0, maximumFractionDigits: displayUnit === "tons" ? 3 : 0 });
   return `${formatted} ${displayUnit === "tons" ? "tons" : "kg"}`;
 }
+function formatHours(hours: number) {
+  return (Math.round((Number(hours || 0) + 1e-9) * 10) / 10).toFixed(1);
+}
 
-function DowntimeParetoChart({ rows }: { rows: any[] }) {
-  let cumulative = 0; const total = rows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
-  const data = rows.map(row => { cumulative += Number(row.hours || 0); return { name: row.name, hours: Number(Number(row.hours || 0).toFixed(1)), cumulative: Number((total ? cumulative / total * 100 : 0).toFixed(2)) }; });
+function DowntimeParetoChart({ rows, filmCategories }: { rows: any[]; filmCategories?: any[] }) {
+  const sourceRows = filmCategories?.length ? filmCategories.flatMap(film => film.categories.map((category: any) => ({ name: category.name, hours: Number(category.hours || 0) }))) : rows;
+  const sharedTotals = sourceRows.reduce((out, row) => { out[row.name] = (out[row.name] || 0) + row.hours; return out; }, {} as Record<string, number>);
+  const sharedRows = Object.entries(sharedTotals).map(([name, hours]) => ({ name, hours })).sort((a, b) => Number(b.hours) - Number(a.hours));
+  if (typeof window !== "undefined") console.debug("Line Waste downtime values (shared modal film_categories vs Pareto)", sharedRows.filter(row => ["Technical Unplanned", "Planning", "Process Planned"].includes(row.name)));
+  let cumulative = 0; const total = sharedRows.reduce((sum, row) => sum + Number(row.hours || 0), 0);
+  const data = sharedRows.map(row => { cumulative += Number(row.hours || 0); return { name: row.name, hours: Number(formatHours(Number(row.hours || 0))), cumulative: Number((total ? cumulative / total * 100 : 0).toFixed(2)) }; });
   return <section className="rounded-xl border border-slate-200 p-3"><h3 className="mb-2 text-sm font-bold text-slate-800">Pareto: Line Waste Downtime by Category</h3><div className="h-72"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 48 }}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"/><XAxis dataKey="name" angle={-30} textAnchor="end" interval={0} height={70} tick={{ fontSize: 10 }}/><YAxis yAxisId="hours" label={{ value: "Hours", angle: -90, position: "insideLeft" }} tick={{ fontSize: 10 }}/><YAxis yAxisId="percent" orientation="right" domain={[0, 100]} tickFormatter={value => `${value}%`} tick={{ fontSize: 10 }}/><Tooltip formatter={(value: number, name: string) => name === "cumulative" ? [`${Number(value).toFixed(2)}%`, "Cumulative"] : [`${Number(value).toFixed(1)}`, "Hours"]}/><Bar yAxisId="hours" dataKey="hours" fill="#0f766e" radius={[4, 4, 0, 0]}/><Line yAxisId="percent" type="monotone" dataKey="cumulative" stroke="#f59e0b" strokeWidth={3} dot={{ r: 3, stroke: "#fff", strokeWidth: 2 }}/></ComposedChart></ResponsiveContainer></div></section>;
 }
 
@@ -267,7 +274,7 @@ function FilmWiseReport({ chart, columns, data, reportRejection, lineWasteReport
     {reportRejection && <ParetoChart title="Pareto: Rejection by Reason" rows={reportRejection.reasons || []} labelKey="reason" displayUnit={displayUnit}/>} 
     {reportRejection && <ParetoChart title="Pareto: Rejection by Responsible Department" rows={reportRejection.departments || []} labelKey="department" displayUnit={displayUnit}/>} 
     {reportRejection && <CombinedRejectionChart rows={reportRejection.combined || []} displayUnit={displayUnit}/>} 
-    {lineWasteReport && <DowntimeParetoChart rows={lineWasteReport.downtime_categories || []}/>} 
+    {lineWasteReport && <DowntimeParetoChart rows={lineWasteReport.downtime_categories || []} filmCategories={lineWasteReport.film_categories || []}/>} 
     <section className="panel min-w-0 overflow-hidden"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-5"><div><p className="section-kicker">Report details</p><h3 className="mt-1 font-bold">Waste by film</h3></div><span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">{data?.total ?? 0} records</span></div><div className="max-h-[410px] overflow-auto"><table className="min-w-full text-left text-sm"><thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr>{columns.map(column => <th key={column} className="whitespace-nowrap px-4 py-3.5 font-bold">{column}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{data?.rows.map((row, index) => <tr key={index}>{columns.map(column => <td key={column} className="whitespace-nowrap px-4 py-3.5">{format(row[column], column.includes("%") ? "%" : "")}{column.includes("%") && row[column] != null ? "%" : ""}</td>)}</tr>)}</tbody></table></div></section>
   </div>;
 }
