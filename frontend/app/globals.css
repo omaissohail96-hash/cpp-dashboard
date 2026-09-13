@@ -22,8 +22,9 @@
 .film-wise-report > section:last-child { display: none; }
 .film-wise-report > section h3 { color: #111827; font-size: 16px; font-weight: 600; }
 .film-wise-report .recharts-cartesian-axis-tick-value { fill: #6b7280 !important; font-size: 11px; }
-.film-wise-report .recharts-xAxis .recharts-cartesian-axis-tick-value { fill: #4b5563 !important; font-size: 11px; }
+.film-wise-report .recharts-xAxis .recharts-cartesian-axis-tick-value { fill: #4b5563 !important; color: #4b5563 !important; font-size: 11px !important; font-weight: 500; }
 .film-wise-report .recharts-yAxis .recharts-cartesian-axis-tick-value { fill: #6b7280 !important; font-size: 11px; }
+.film-wise-report > section:nth-child(3) .recharts-xAxis .recharts-cartesian-axis-tick-value { font-size: 14px !important; }
 .film-wise-report .recharts-line-curve { stroke-width: 3; }
 .film-wise-report .recharts-line-dot { stroke: #ffffff; stroke-width: 2; }
 .waste-shell > .mx-auto.max-w-7xl > .mt-7.grid.gap-6 > section:first-child { order: 7; width: min(100%, 72rem); margin-inline: auto; min-height: 22rem; }
@@ -40,6 +41,7 @@
 .film-wise-report .recharts-tooltip-item,
 .film-wise-report .recharts-tooltip-label { color: #1f2937 !important; }
 .report-table-accordion { width: min(100%, 800px); max-width: 800px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 3px rgb(0 0 0 / 0.1); }
+.film-wise-chart > div:first-child > span.rounded-lg { display: none; }
 
 @layer base {
   :root { color-scheme: light; }

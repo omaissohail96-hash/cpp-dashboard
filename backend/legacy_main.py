@@ -46,6 +46,16 @@ def restore_cache() -> None:
 restore_cache()
 
 def engine(path: Path): return "pyxlsb" if path.suffix.lower() == ".xlsb" else None
+def normalize_sheet_name(value: Any) -> str:
+    return re.sub(r"\s+", "", str(value or "")).strip().lower()
+def resolve_sheet_name(path: Path, expected: str) -> str:
+    """Resolve a workbook tab ignoring case and all whitespace differences."""
+    expected_key = normalize_sheet_name(expected)
+    with pd.ExcelFile(path, engine=engine(path)) as workbook:
+        for actual in workbook.sheet_names:
+            if normalize_sheet_name(actual) == expected_key:
+                return actual
+    raise ValueError(f'Expected sheet "{expected}" was not found in the uploaded workbook.')
 def clean(value: Any, index=0): return re.sub(r"\s+", " ", str(value or "").replace("\r", " ").replace("\n", " ")).strip() or f"Column {index+1}"
 def json_value(value: Any, column: str):
     if pd.isna(value) or value in ("", "nan", "NaT"): return None
@@ -54,7 +64,7 @@ def json_value(value: Any, column: str):
         return float(value)
     return str(value).strip()
 def parse(path: Path):
-    raw=pd.read_excel(path,sheet_name="Waste",engine=engine(path),header=None)
+    raw=pd.read_excel(path,sheet_name=resolve_sheet_name(path, "Waste"),engine=engine(path),header=None)
     title=next((i for i,v in raw.iloc[:,0].items() if str(v).strip().lower()=="film wise waste"),None)
     if title is None: raise ValueError('Expected "FILM WISE WASTE" table was not found in the Waste sheet.')
     header=title+1; seen={}; columns=[]
@@ -66,7 +76,18 @@ def parse(path: Path):
     total={name:json_value(raw.iloc[total_row,i],name) for i,name in enumerate(columns)}
     return [{k:json_value(v,k) for k,v in row.items()} for row in rows.to_dict("records")],columns,total
 def parse_line_waste(path: Path):
-    frame=pd.read_excel(path,sheet_name="Line waste",engine=engine(path),header=1)
+    raw = pd.read_excel(path, sheet_name=resolve_sheet_name(path, "Line waste"), engine=engine(path), header=None)
+    expected = {"date", "shift", "batch", "film", "cattegory", "category", "nature of dt", "waste (kg)", "downtime (hours)", "month"}
+    header = None
+    for index in range(min(10, len(raw))):
+        normalized_row = {clean(value).lower() for value in raw.iloc[index].tolist() if str(value or "").strip()}
+        if {"film", "waste (kg)", "month"}.issubset(normalized_row) and ("cattegory" in normalized_row or "category" in normalized_row):
+            header = index
+            break
+    if header is None:
+        raise ValueError('Could not find the "Line waste" header row in the first 10 rows. Expected Film, Category/Cattegory, Waste (Kg), and Month columns.')
+    frame = raw.iloc[header + 1:].copy()
+    frame.columns = raw.iloc[header].tolist()
     seen={}; normalized=[]
     for i, column in enumerate(frame.columns):
         name=clean(column,i); seen[name.lower()]=seen.get(name.lower(),0)+1; normalized.append(name if seen[name.lower()]==1 else f"{name} ({seen[name.lower()]})")
@@ -75,7 +96,7 @@ def parse_line_waste(path: Path):
 def parse_metallized_stock_total(path: Path, sheet: str, kind: str):
     """Read only the Total row from the metallized opening/closing summary table."""
     try:
-        raw = pd.read_excel(path, sheet_name=sheet, engine=engine(path), header=None)
+        raw = pd.read_excel(path, sheet_name=resolve_sheet_name(path, sheet), engine=engine(path), header=None)
     except Exception:
         return None
     title = next((i for i, row in raw.iterrows() if any(kind in str(value or "").upper() and "SUMMARY CPP METALLIZED" in str(value or "").upper() for value in row.tolist())), None)
@@ -86,7 +107,7 @@ def parse_metallized_stock_total(path: Path, sheet: str, kind: str):
     values = {headers[i]: json_value(raw.iloc[total_row, i], headers[i]) for i in range(min(len(headers), len(raw.columns)))}
     return values
 def parse_rejection(path: Path):
-    raw = pd.read_excel(path, sheet_name="Rejection (Software)", engine=engine(path), header=None)
+    raw = pd.read_excel(path, sheet_name=resolve_sheet_name(path, "Rejection (Software)"), engine=engine(path), header=None)
     header = next((i for i, row in raw.iterrows() if sum(str(value or "").strip().lower() in {"reason", "net wt", "gross wt"} for value in row.tolist()) >= 2), None)
     if header is None: return [], None
     columns = [clean(value, i) for i, value in enumerate(raw.iloc[header].tolist())]
@@ -168,7 +189,9 @@ def waste_filters():
 def line_waste_detail():
     require_data(); rows=cache.get("line_rows",[])
     month_values=[str(r.get("Month")).strip() for r in rows if re.fullmatch(r"(?:0[1-9]|1[0-2])-\d{2}", str(r.get("Month") or "").strip()) and str(r.get("Month")).strip() != "01-00"]
-    month=max(month_values, key=lambda value: (int(value.split("-")[1]), int(value.split("-")[0]))) if month_values else None
+    reporting_period = cache.get("reporting_period")
+    requested_month = f"{reporting_period[5:7]}-{reporting_period[2:4]}" if isinstance(reporting_period, str) and re.fullmatch(r"\d{4}-\d{2}", reporting_period) else None
+    month = requested_month if requested_month in month_values else (max(month_values, key=lambda value: (int(value.split("-")[1]), int(value.split("-")[0]))) if month_values else None)
     rows=[r for r in rows if month is None or str(r.get("Month")).strip()==month]
     if not rows: logger.warning("Line Waste month filter returned zero rows for month %s", month)
     def groups(key):
@@ -180,12 +203,13 @@ def line_waste_detail():
     nested={}; category_key=find_category_key(rows)
     downtime_by_category={}
     for row in rows:
-        film=str(row.get("Film") or "Unspecified"); category=str(row.get(category_key) or "Unspecified")
+        film=clean(row.get("Film") or "Unspecified"); category=clean(row.get(category_key) or "Unspecified")
         item=nested.setdefault(film,{}).setdefault(category,{"waste":0,"hours":0})
         item["waste"]+=float(row.get("Waste (Kg)") or 0); item["hours"]+=float(row.get("Downtime (Hours)") or 0)
         downtime_by_category[category]=downtime_by_category.get(category,0)+float(row.get("Downtime (Hours)") or 0)
     film_categories=[{"film":film,"total":sum(v["waste"] for v in values.values()),"categories":[{"name":name,"waste":v["waste"],"hours":v["hours"]} for name,v in sorted(values.items(),key=lambda item:item[1]["waste"],reverse=True) if v["waste"] != 0 or v["hours"] != 0]} for film,values in sorted(nested.items(),key=lambda item:sum(v["waste"] for v in item[1].values()),reverse=True) if sum(v["waste"] for v in values.values()) != 0]
     downtime_categories=[{"name":name,"hours":hours} for name,hours in sorted(downtime_by_category.items(),key=lambda item:item[1],reverse=True)]
+    logger.info("Line Waste downtime aggregation: month=%s, filtered_rows=%s, Technical Planned=%.3f, Technical Unplanned=%.3f, total_hours=%.3f", month, len(rows), downtime_by_category.get("Technical Planned", 0), downtime_by_category.get("Technical Unplanned", 0), sum(downtime_by_category.values()))
     for item in reasons: item["share"]=item["waste"]/total_waste*100 if total_waste else 0
     return {"month":month,"summary":{"waste":total_waste,"hours":total_hours,"instances":total_instances,"events":len(rows)},"reasons":reasons,"categories":categories,"films":films,"film_categories":film_categories,"downtime_categories":downtime_categories}
 
