@@ -238,7 +238,7 @@ def rejection_reason_summary():
     periods = [period for period in periods if period]
     reporting_month = cache.get("reporting_period") or (max(periods) if periods else None)
     if reporting_month: rejection_rows = [row for row in rejection_rows if month_period(row.get("Month")) == reporting_month]
-    standard = ["BAND", "CREASING SLITTER", "DEMATALIZE", "LOW OD", "PIN HOLES", "SCRATCHES", "SIZE VARIATION", "SLACKNESS", "SPITTING", "STRUCTURE", "TD IMPRESSION", "THICKNESS VARIATION", "TRAM LINES", "WRINKLES"]
+    standard = ["BAND", "CREASING SLITTER", "DEMATALIZE", "LOW OD", "PIN HOLES", "SCRATCHES", "SIZE VARIATION", "SLACKNESS", "SPITTING", "STRUCTURE", "TD IMPRESSION", "THICKNESS VARIATION", "TRAM LINES", "WRINKLES", "DUST PARTICLES", "TRIM IMPRESSION", "EDGE DROP"]
     def canonical_reason(value: Any) -> str:
         text = re.sub(r"\s+", " ", str(value or "").strip().upper())
         if not text: return "Other"
@@ -257,6 +257,9 @@ def rejection_reason_summary():
             "THICKNESS VARIATION": ["THICKNESS", "THICKNESS VARIATION", "THICKNESS VARIATIONS"],
             "TRAM LINES": ["TRAM LINE", "TRAM LINES"],
             "WRINKLES": ["WRINKLE", "WRINKLES", "BOTTOM WRINKLES"],
+            "DUST PARTICLES": ["DUST PARTICLE", "DUST PARTICLES", "DUST", "DUST PARTICLE(S)"],
+            "TRIM IMPRESSION": ["TRIM IMPRESSION", "TRIM IMP", "TRIM IMPRESSIONS"],
+            "EDGE DROP": ["EDGE DROP", "EDGEDROP", "EDGE DROPS"],
         }
         for category in standard:
             if text in aliases.get(category, []) or any(alias in text for alias in aliases.get(category, [])): return category
